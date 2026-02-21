@@ -51,18 +51,19 @@ This prints the path to the extension folder. Then:
 ## How It Works
 
 ```
-  Chrome Extension             Express Server (:4173)          Claude Code
-  ┌────────────────┐          ┌────────────────────┐         ┌────────────┐
-  │  Content Script │──POST──▶│  REST API           │         │            │
-  │  · element pick │          │  · queue.json       │──SSE──▶│  watch     │
-  │  · region draw  │          │  · screenshots      │         │  (auto)    │
-  │  · fiber inspect│          │                    │         │            │
-  │                │          │                    │         │  /nitpix   │
-  │  Side Panel    │◀──SSE───│  /api/events        │         │  (manual)  │
-  │  · task queue  │          │                    │◀──PUT───│            │
-  │  · review/retry│          │                    │         │  marks     │
-  └────────────────┘          └────────────────────┘         │  "review"  │
-                                                              └────────────┘
+  Chrome Extension          Express Server (:4173)            Claude Code
+        |                          |                               |
+        |--- POST /api/tasks ----->|                               |
+        |    screenshot + metadata |                               |
+        |                          |--- SSE task_created --------->|
+        |                          |                               |
+        |                          |                 watch (auto-dispatch)
+        |                          |                 /nitpix (manual)
+        |                          |                               |
+        |                          |<-- PUT /api/tasks/:id --------|
+        |                          |    status -> "review"         |
+        |<-- SSE task_updated -----|                               |
+        |                          |                               |
 ```
 
 **The extension captures everything the agent needs:** a screenshot of the page, the React component name and source file (via fiber inspection), computed CSS styles, and your description of the issue.
