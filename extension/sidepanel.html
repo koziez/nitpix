@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nitpix</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header id="header">
+    <div id="header-top">
+      <h1>Nitpix</h1>
+      <span id="server-status" class="status-dot disconnected" title="Server disconnected"></span>
+    </div>
+    <div id="actions">
+      <button id="btn-select" class="btn btn-primary">Select Element</button>
+      <button id="btn-region" class="btn btn-primary">Select Region</button>
+      <button id="btn-page-note" class="btn btn-secondary">Page Note</button>
+    </div>
+  </header>
+
+  <div id="page-note-form" class="hidden">
+    <textarea id="page-note-text" placeholder="Note about this page..."></textarea>
+    <div class="form-row">
+      <select id="page-note-category">
+        <option value="tweak">Tweak</option>
+        <option value="bug">Bug</option>
+        <option value="feature">Feature</option>
+      </select>
+      <select id="page-note-priority">
+        <option value="high">High</option>
+        <option value="medium" selected>Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <button id="page-note-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+      <button id="page-note-submit" class="btn btn-primary btn-sm">Create</button>
+    </div>
+  </div>
+
+  <div id="queue-toolbar">
+    <button id="btn-clear-done" class="btn btn-secondary btn-sm hidden">Clear Done</button>
+  </div>
+
+  <div id="task-list"></div>
+  <div id="empty-state" class="hidden">No tasks yet. Select an element or create a page note to get started.</div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
