@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { QueueManager } from "../server/queue.js";
-import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
