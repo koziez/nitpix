@@ -1,5 +1,5 @@
 import express from "express";
-import type { Task, CreateTaskInput } from "../types.js";
+import type { Task, CreateTaskInput, ActivityEntry } from "../types.js";
 import { QueueManager, VALID_STATUSES } from "./queue.js";
 
 type AsyncHandler = (
@@ -62,6 +62,7 @@ export function createServer(reviewDir: string, port: number) {
   // --- SSE ---
 
   const sseClients: Set<express.Response> = new Set();
+  const taskActivity: Map<string, ActivityEntry[]> = new Map();
 
   function broadcast(event: string, data: unknown) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -147,6 +148,9 @@ export function createServer(reviewDir: string, port: number) {
         return;
       }
       broadcast("task_updated", task);
+      if (task.status !== "in_progress") {
+        taskActivity.delete(req.params.id);
+      }
       res.json(task);
     })
   );
@@ -179,6 +183,58 @@ export function createServer(reviewDir: string, port: number) {
         res.status(404).json({ error: "Task not found" });
         return;
       }
+      broadcast("task_updated", task);
+      res.json(task);
+    })
+  );
+
+  // --- Activity endpoints ---
+
+  app.post(
+    "/api/tasks/:id/activity",
+    asyncHandler(async (req, res) => {
+      const task = await queue.getTask(req.params.id);
+      if (!task) {
+        res.status(404).json({ error: "Task not found" });
+        return;
+      }
+      const { type, summary } = req.body as { type: ActivityEntry["type"]; summary: string };
+      const entry: ActivityEntry = {
+        timestamp: new Date().toISOString(),
+        type,
+        summary,
+      };
+      const entries = taskActivity.get(req.params.id) ?? [];
+      entries.push(entry);
+      taskActivity.set(req.params.id, entries);
+      broadcast("task_activity", { taskId: req.params.id, entry });
+      res.json({ entries });
+    })
+  );
+
+  app.get(
+    "/api/tasks/:id/activity",
+    asyncHandler(async (req, res) => {
+      const task = await queue.getTask(req.params.id);
+      if (!task) {
+        res.status(404).json({ error: "Task not found" });
+        return;
+      }
+      const entries = taskActivity.get(req.params.id) ?? [];
+      res.json({ entries });
+    })
+  );
+
+  app.post(
+    "/api/tasks/:id/cancel",
+    asyncHandler(async (req, res) => {
+      const task = await queue.updateTask(req.params.id, { status: "done" });
+      if (!task) {
+        res.status(404).json({ error: "Task not found" });
+        return;
+      }
+      taskActivity.delete(req.params.id);
+      broadcast("task_cancel", { id: req.params.id });
       broadcast("task_updated", task);
       res.json(task);
     })

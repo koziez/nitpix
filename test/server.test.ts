@@ -180,6 +180,135 @@ describe("Server API", () => {
     });
   });
 
+  describe("POST /api/tasks/:id/activity", () => {
+    it("accepts an activity entry", async () => {
+      const createRes = await createTask();
+      const task = await createRes.json();
+
+      // Set task to in_progress first
+      await fetch(`${baseUrl}/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_progress" }),
+      });
+
+      const res = await fetch(`${baseUrl}/api/tasks/${task.id}/activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "text", summary: "Working on it" }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toHaveProperty("entries");
+      expect(data.entries).toHaveLength(1);
+      expect(data.entries[0].type).toBe("text");
+      expect(data.entries[0].summary).toBe("Working on it");
+      expect(data.entries[0].timestamp).toBeTruthy();
+    });
+
+    it("returns 404 for unknown task", async () => {
+      const res = await fetch(`${baseUrl}/api/tasks/nonexistent/activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "text", summary: "Hello" }),
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("GET /api/tasks/:id/activity", () => {
+    it("returns activity entries", async () => {
+      const createRes = await createTask();
+      const task = await createRes.json();
+
+      // Set task to in_progress and post an activity entry
+      await fetch(`${baseUrl}/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_progress" }),
+      });
+      await fetch(`${baseUrl}/api/tasks/${task.id}/activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "tool_start", summary: "Running eslint" }),
+      });
+
+      const res = await fetch(`${baseUrl}/api/tasks/${task.id}/activity`);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toHaveProperty("entries");
+      expect(data.entries).toHaveLength(1);
+      expect(data.entries[0].type).toBe("tool_start");
+      expect(data.entries[0].summary).toBe("Running eslint");
+    });
+
+    it("returns empty array for task with no activity", async () => {
+      const createRes = await createTask();
+      const task = await createRes.json();
+
+      const res = await fetch(`${baseUrl}/api/tasks/${task.id}/activity`);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toHaveProperty("entries");
+      expect(data.entries).toHaveLength(0);
+    });
+  });
+
+  describe("POST /api/tasks/:id/cancel", () => {
+    it("sets task status to done", async () => {
+      const createRes = await createTask();
+      const task = await createRes.json();
+
+      // Set task to in_progress first
+      await fetch(`${baseUrl}/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_progress" }),
+      });
+
+      const res = await fetch(`${baseUrl}/api/tasks/${task.id}/cancel`, {
+        method: "POST",
+      });
+      expect(res.status).toBe(200);
+      const updated = await res.json();
+      expect(updated.status).toBe("done");
+    });
+
+    it("clears activity on cancel", async () => {
+      const createRes = await createTask();
+      const task = await createRes.json();
+
+      // Set to in_progress and add activity
+      await fetch(`${baseUrl}/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_progress" }),
+      });
+      await fetch(`${baseUrl}/api/tasks/${task.id}/activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "text", summary: "Doing stuff" }),
+      });
+
+      // Cancel the task
+      await fetch(`${baseUrl}/api/tasks/${task.id}/cancel`, {
+        method: "POST",
+      });
+
+      // Activity should be cleared
+      const actRes = await fetch(`${baseUrl}/api/tasks/${task.id}/activity`);
+      const data = await actRes.json();
+      expect(data.entries).toHaveLength(0);
+    });
+
+    it("returns 404 for unknown task", async () => {
+      const res = await fetch(`${baseUrl}/api/tasks/nonexistent/cancel`, {
+        method: "POST",
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe("CORS", () => {
     it("allows localhost origin", async () => {
       const res = await fetch(`${baseUrl}/api/status`, {
