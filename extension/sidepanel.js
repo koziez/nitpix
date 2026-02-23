@@ -13,6 +13,7 @@ let expandedTaskId = null;
 let retryTaskId = null; // task currently showing retry form
 let selectionModeActive = false;
 let activeSelectionMode = null; // "element" or "region"
+let taskActivityMap = {}; // taskId -> ActivityEntry[]
 
 // ─── DOM References ────────────────────────────────────────────────
 
@@ -38,6 +39,19 @@ async function fetchTasks() {
     if (!res.ok) throw new Error("Server error");
     const data = await res.json();
     tasks = data.items || [];
+    for (const task of tasks) {
+      if (task.status === "in_progress") {
+        fetch(`${SERVER_URL}/api/tasks/${task.id}/activity`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.entries && data.entries.length > 0) {
+              taskActivityMap[task.id] = data.entries;
+              if (expandedTaskId === task.id) renderTasks();
+            }
+          })
+          .catch(() => {});
+      }
+    }
     updateServerStatus(true);
     renderTasks();
   } catch {
@@ -67,6 +81,9 @@ function connectSSE() {
     const updated = JSON.parse(e.data);
     const idx = tasks.findIndex((t) => t.id === updated.id);
     if (idx !== -1) tasks[idx] = updated;
+    if (updated.status !== "in_progress") {
+      delete taskActivityMap[updated.id];
+    }
     renderTasks();
   });
 
@@ -74,6 +91,18 @@ function connectSSE() {
     const { id } = JSON.parse(e.data);
     tasks = tasks.filter((t) => t.id !== id);
     renderTasks();
+  });
+
+  eventSource.addEventListener("task_activity", (e) => {
+    const { taskId, entry } = JSON.parse(e.data);
+    if (!taskActivityMap[taskId]) taskActivityMap[taskId] = [];
+    taskActivityMap[taskId].push(entry);
+    if (expandedTaskId === taskId) renderTasks();
+  });
+
+  eventSource.addEventListener("task_cancel", (e) => {
+    const { id } = JSON.parse(e.data);
+    delete taskActivityMap[id];
   });
 
   eventSource.onopen = () => {
@@ -303,6 +332,61 @@ function createTaskDetail(task) {
 
     actions.appendChild(dismissBtn);
     detail.appendChild(actions);
+  } else if (task.status === "in_progress") {
+    const actions = document.createElement("div");
+    actions.className = "task-actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn-cancel btn-sm";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = "Cancelling...";
+      try {
+        await fetch(`${SERVER_URL}/api/tasks/${task.id}/cancel`, { method: "POST" });
+      } catch (err) {
+        console.error("Failed to cancel task:", err);
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = "Cancel";
+      }
+    });
+
+    actions.appendChild(cancelBtn);
+    detail.appendChild(actions);
+
+    const activity = taskActivityMap[task.id];
+    if (activity && activity.length > 0) {
+      const activityLabel = document.createElement("div");
+      activityLabel.style.cssText = "font-size: 10px; color: #6b7280; margin-top: 8px; margin-bottom: 4px; font-weight: 600;";
+      activityLabel.textContent = "ACTIVITY";
+      detail.appendChild(activityLabel);
+
+      const activityLog = document.createElement("div");
+      activityLog.className = "task-activity-log";
+
+      for (const entry of activity) {
+        const line = document.createElement("div");
+        line.className = "activity-entry";
+
+        const icon = document.createElement("span");
+        icon.className = "activity-icon";
+        icon.textContent = entry.type === "tool_start" ? ">" : entry.type === "result" ? "*" : " ";
+        line.appendChild(icon);
+
+        const text = document.createElement("span");
+        text.textContent = entry.summary;
+        line.appendChild(text);
+
+        activityLog.appendChild(line);
+      }
+
+      detail.appendChild(activityLog);
+
+      requestAnimationFrame(() => {
+        activityLog.scrollTop = activityLog.scrollHeight;
+      });
+    }
   }
 
   return detail;

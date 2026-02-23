@@ -447,3 +447,43 @@ h1 {
 .hidden {
   display: none !important;
 }
+
+/* ─── Cancel Button ─── */
+
+.btn-cancel {
+  background: #ef4444;
+  color: white;
+  border: none;
+}
+
+.btn-cancel:hover {
+  background: #dc2626;
+}
+
+/* ─── Activity Log ─── */
+
+.task-activity-log {
+  background: #0a0a14;
+  border: 1px solid #1e1e3a;
+  border-radius: 4px;
+  padding: 6px 8px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.activity-entry {
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-icon {
+  color: #3b82f6;
+  margin-right: 4px;
+  display: inline-block;
+  width: 8px;
+}
