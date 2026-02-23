@@ -405,6 +405,23 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
             }
           }
         });
+        child.stdout.on("end", () => {
+          if (stdoutBuffer.trim()) {
+            try {
+              const event = JSON.parse(stdoutBuffer) as StreamEvent;
+              const activities = extractActivities(event);
+              for (const activity of activities) {
+                log(`[agent] ${activity.summary}`);
+                fetchJSON(`${serverUrl}/api/tasks/${task.id}/activity`, {
+                  method: "POST",
+                  body: activity,
+                }).catch(() => {});
+              }
+            } catch {
+              console.log(`  [agent] ${stdoutBuffer}`);
+            }
+          }
+        });
       }
 
       // Log stderr as-is
