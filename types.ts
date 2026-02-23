@@ -81,3 +81,9 @@ export interface WatcherOptions {
   agentTimeout?: number;
   maxRetries?: number;
 }
+
+export interface ActivityEntry {
+  timestamp: string;
+  type: "tool_start" | "tool_end" | "text" | "error" | "result";
+  summary: string;
+}
