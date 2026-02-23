@@ -7,6 +7,7 @@ import type { Queue, Task, CreateTaskInput } from "../types.js";
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 export const VALID_STATUSES = new Set(["pending", "in_progress", "review", "done"]);
+export const VALID_ACTIVITY_TYPES = new Set(["tool_start", "tool_end", "text", "error", "result"]);
 
 const VALID_UPDATE_FIELDS = new Set([
   "status",

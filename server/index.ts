@@ -1,6 +1,6 @@
 import express from "express";
 import type { Task, CreateTaskInput, ActivityEntry } from "../types.js";
-import { QueueManager, VALID_STATUSES } from "./queue.js";
+import { QueueManager, VALID_STATUSES, VALID_ACTIVITY_TYPES } from "./queue.js";
 
 type AsyncHandler = (
   req: express.Request,
@@ -163,6 +163,7 @@ export function createServer(reviewDir: string, port: number) {
         res.status(404).json({ error: "Task not found" });
         return;
       }
+      taskActivity.delete(req.params.id);
       broadcast("task_deleted", { id: req.params.id });
       res.json({ ok: true });
     })
@@ -198,11 +199,17 @@ export function createServer(reviewDir: string, port: number) {
         res.status(404).json({ error: "Task not found" });
         return;
       }
-      const { type, summary } = req.body as { type: ActivityEntry["type"]; summary: string };
+      const { type, summary } = req.body as { type: string; summary: string };
+      if (!type || !VALID_ACTIVITY_TYPES.has(type)) {
+        res.status(400).json({
+          error: `Invalid activity type: ${type}. Must be one of: ${[...VALID_ACTIVITY_TYPES].join(", ")}`,
+        });
+        return;
+      }
       const entry: ActivityEntry = {
         timestamp: new Date().toISOString(),
-        type,
-        summary,
+        type: type as ActivityEntry["type"],
+        summary: summary || "",
       };
       const entries = taskActivity.get(req.params.id) ?? [];
       entries.push(entry);
