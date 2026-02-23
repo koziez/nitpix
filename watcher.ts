@@ -109,6 +109,76 @@ ${attemptsSection}
 IMPORTANT: Set status to "review" (not "done"). The developer will accept or retry from the browser.`;
 }
 
+// ─── Stream-JSON Parser ─────────────────────────────────────────
+
+interface StreamEvent {
+  type: string;
+  subtype?: string;
+  message?: {
+    content?: Array<{
+      type: string;
+      text?: string;
+      name?: string;
+      input?: Record<string, unknown>;
+    }>;
+  };
+  result?: string;
+  cost_usd?: number;
+  num_turns?: number;
+}
+
+function summarizeTool(name: string, input: Record<string, unknown>): string {
+  switch (name) {
+    case "Read":
+      return `Reading ${input.file_path || "file"}`;
+    case "Edit":
+      return `Editing ${input.file_path || "file"}`;
+    case "Write":
+      return `Writing ${input.file_path || "file"}`;
+    case "Glob":
+      return `Searching for ${input.pattern || "files"}`;
+    case "Grep":
+      return `Searching for "${input.pattern || "..."}"`;
+    case "Bash":
+      return `Running ${(input.command as string)?.slice(0, 60) || "command"}`;
+    default:
+      return `Using ${name}`;
+  }
+}
+
+function extractActivities(event: StreamEvent): Array<{ type: string; summary: string }> {
+  const activities: Array<{ type: string; summary: string }> = [];
+
+  if (event.type === "assistant" && event.message?.content) {
+    for (const block of event.message.content) {
+      if (block.type === "tool_use" && block.name) {
+        activities.push({
+          type: "tool_start",
+          summary: summarizeTool(block.name, block.input || {}),
+        });
+      } else if (block.type === "text" && block.text) {
+        const trimmed = block.text.trim();
+        if (trimmed.length > 0) {
+          activities.push({
+            type: "text",
+            summary: trimmed.length > 80 ? trimmed.slice(0, 80) + "..." : trimmed,
+          });
+        }
+      }
+    }
+  } else if (event.type === "result") {
+    const cost = event.cost_usd != null ? `$${event.cost_usd.toFixed(3)}` : "";
+    const turns = event.num_turns != null ? `${event.num_turns} turns` : "";
+    const parts = [cost, turns].filter(Boolean).join(", ");
+    activities.push({
+      type: "result",
+      summary: parts ? `Complete (${parts})` : "Complete",
+    });
+  }
+
+  return activities;
+}
+
 // ─── HTTP Helpers ────────────────────────────────────────────────
 
 async function fetchJSON(url: string, options?: { method?: string; body?: unknown }): Promise<unknown> {
@@ -276,6 +346,8 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
         prompt,
         "--allowedTools",
         allowedTools,
+        "--output-format",
+        "stream-json",
       ];
 
       if (maxTurns) {
@@ -298,7 +370,6 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
             `Agent timeout (${Math.round(agentTimeout / 1000)}s). Killing process.`
           );
           child.kill("SIGTERM");
-          // Force kill after 5s if still alive
           setTimeout(() => {
             if (currentProcess === child) {
               child.kill("SIGKILL");
@@ -307,26 +378,50 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
         }, agentTimeout);
       }
 
-      // Prefix agent output
-      const prefixStream = (stream: NodeJS.ReadableStream, prefix: string) => {
-        let lineBuffer = "";
-        stream.on("data", (chunk: Buffer) => {
-          lineBuffer += chunk.toString();
-          const lines = lineBuffer.split("\n");
-          lineBuffer = lines.pop()!;
-          for (const line of lines) {
-            console.log(`  ${prefix} ${line}`);
-          }
-        });
-        stream.on("end", () => {
-          if (lineBuffer) {
-            console.log(`  ${prefix} ${lineBuffer}`);
-          }
-        });
-      };
+      // Parse stream-json output (JSONL on stdout)
+      let stdoutBuffer = "";
+      if (child.stdout) {
+        child.stdout.on("data", (chunk: Buffer) => {
+          stdoutBuffer += chunk.toString();
+          const lines = stdoutBuffer.split("\n");
+          stdoutBuffer = lines.pop()!;
 
-      if (child.stdout) prefixStream(child.stdout, "[agent]");
-      if (child.stderr) prefixStream(child.stderr, "[agent]");
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line) as StreamEvent;
+              const activities = extractActivities(event);
+              for (const activity of activities) {
+                log(`[agent] ${activity.summary}`);
+                // Fire-and-forget POST to server
+                fetchJSON(`${serverUrl}/api/tasks/${task.id}/activity`, {
+                  method: "POST",
+                  body: activity,
+                }).catch(() => {});
+              }
+            } catch {
+              // Non-JSON line, log as-is
+              console.log(`  [agent] ${line}`);
+            }
+          }
+        });
+      }
+
+      // Log stderr as-is
+      if (child.stderr) {
+        let stderrBuffer = "";
+        child.stderr.on("data", (chunk: Buffer) => {
+          stderrBuffer += chunk.toString();
+          const lines = stderrBuffer.split("\n");
+          stderrBuffer = lines.pop()!;
+          for (const line of lines) {
+            console.log(`  [agent:err] ${line}`);
+          }
+        });
+        child.stderr.on("end", () => {
+          if (stderrBuffer) console.log(`  [agent:err] ${stderrBuffer}`);
+        });
+      }
 
       child.on("error", (err) => {
         if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -399,6 +494,16 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
         task_deleted: (data) => {
           const { id } = data as { id: string };
           pendingQueue = pendingQueue.filter((qid) => qid !== id);
+        },
+        task_cancel: (data) => {
+          const { id } = data as { id: string };
+          if (id === currentTaskId && currentProcess) {
+            log(`Cancel requested for task ${id.slice(0, 8)}. Killing agent.`);
+            currentProcess.kill("SIGTERM");
+            setTimeout(() => {
+              if (currentProcess) currentProcess.kill("SIGKILL");
+            }, 5000);
+          }
         },
       },
       () => {
