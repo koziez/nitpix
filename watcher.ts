@@ -220,7 +220,7 @@ async function fetchJSON(url: string, options?: { method?: string; body?: unknow
 
 const DEFAULT_ALLOWED_TOOLS = "Edit,Write,Read,Bash(curl:*),Glob,Grep";
 const DEFAULT_AGENT_TIMEOUT = 600000; // 10 minutes
-const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_MAX_CRASHES = 2;
 
 export function startWatcher(options: WatcherOptions): { stop: () => void } {
   const {
@@ -229,7 +229,7 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
     maxTurns,
     allowedTools = DEFAULT_ALLOWED_TOOLS,
     agentTimeout = DEFAULT_AGENT_TIMEOUT,
-    maxRetries = DEFAULT_MAX_RETRIES,
+    maxCrashes = DEFAULT_MAX_CRASHES,
   } = options;
 
   let pendingQueue: string[] = [];
@@ -239,6 +239,7 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
   let sseConnection: { close: () => void } | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
+  const crashCounts = new Map<string, number>();
 
   // ── Logging helpers ──
 
@@ -285,19 +286,19 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
         return;
       }
 
-      // Check max retries — skip tasks that have exceeded the limit
-      if (maxRetries > 0 && task.attempts.length >= maxRetries) {
+      // Check crash loop — stop auto-dispatching if agent keeps crashing
+      const crashes = crashCounts.get(task.id) ?? 0;
+      if (maxCrashes > 0 && crashes >= maxCrashes) {
         log(
-          `Task ${task.id.slice(0, 8)} has reached max retries (${maxRetries}). Skipping.`
+          `Task ${task.id.slice(0, 8)} crashed ${crashes} times. Halting auto-dispatch.`
         );
         pendingQueue = pendingQueue.filter((id) => id !== task.id);
-        return;
+      } else {
+        // Remove this task from our queue
+        pendingQueue = pendingQueue.filter((id) => id !== task.id);
+
+        await processTask(task);
       }
-
-      // Remove this task from our queue
-      pendingQueue = pendingQueue.filter((id) => id !== task.id);
-
-      await processTask(task);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log(`Error fetching next task: ${msg}`);
@@ -471,8 +472,10 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
           log(`Agent notes: ${updated.agentNotes}`);
         }
       } else if (updated.status === "in_progress") {
-        // Agent crashed without updating status — reset to pending
-        log(`Agent exited (code ${exitCode}) without updating task. Resetting to pending.`);
+        // Agent crashed without updating status — track and reset to pending
+        const crashes = (crashCounts.get(task.id) ?? 0) + 1;
+        crashCounts.set(task.id, crashes);
+        log(`Agent exited (code ${exitCode}) without updating task. Crash #${crashes}. Resetting to pending.`);
         await fetchJSON(`${serverUrl}/api/tasks/${task.id}`, {
           method: "PUT",
           body: { status: "pending" },
@@ -505,12 +508,15 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
         task_updated: (data) => {
           const task = data as Task;
           if (task.status === "pending") {
+            // Human retry — reset crash counter
+            crashCounts.delete(task.id);
             enqueue(task.id);
           }
         },
         task_deleted: (data) => {
           const { id } = data as { id: string };
           pendingQueue = pendingQueue.filter((qid) => qid !== id);
+          crashCounts.delete(id);
         },
         task_cancel: (data) => {
           const { id } = data as { id: string };
@@ -574,8 +580,8 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
     if (agentTimeout > 0) {
       console.log(`  Timeout: ${Math.round(agentTimeout / 1000)}s`);
     }
-    if (maxRetries > 0) {
-      console.log(`  Max retries: ${maxRetries}`);
+    if (maxCrashes > 0) {
+      console.log(`  Max crashes: ${maxCrashes}`);
     }
     console.log();
     console.log("  ⚠  DANGEROUS MODE — The agent runs with --allowedTools and can");

@@ -35,7 +35,7 @@ Watch/Start Options:
   --max-turns <n>                       Max agent turns per task (default: 25)
   --allowed-tools <tools>               Comma-separated tools for the agent
   --agent-timeout <ms>                  Agent timeout in ms (default: 600000 = 10 min)
-  --max-retries <n>                     Max retry attempts per task (default: 2)
+  --max-crashes <n>                     Max consecutive agent crashes before halting a task (default: 2)
 
 WARNING: watch/start runs agents in dangerous mode (--allowedTools). The agent
 can read, write, and delete files in your project without confirmation prompts.
@@ -226,7 +226,7 @@ async function cmdStart(args: string[]) {
     "Edit,Write,Read,Bash(curl:*),Glob,Grep"
   );
   const agentTimeout = parseIntArg(args, "--agent-timeout", 600000);
-  const maxRetries = parseIntArg(args, "--max-retries", 2);
+  const maxCrashes = parseIntArg(args, "--max-crashes", 2);
 
   // Start server first
   createServer(reviewDir, port);
@@ -238,7 +238,7 @@ async function cmdStart(args: string[]) {
     maxTurns,
     allowedTools,
     agentTimeout,
-    maxRetries,
+    maxCrashes,
   });
 
   process.on("SIGINT", async () => {
@@ -278,7 +278,7 @@ async function cmdWatch(args: string[]) {
     "Edit,Write,Read,Bash(curl:*),Glob,Grep"
   );
   const agentTimeout = parseIntArg(args, "--agent-timeout", 600000);
-  const maxRetries = parseIntArg(args, "--max-retries", 2);
+  const maxCrashes = parseIntArg(args, "--max-crashes", 2);
 
   const serverUrl = `http://localhost:${config.serverPort || DEFAULT_PORT}`;
 
@@ -288,7 +288,7 @@ async function cmdWatch(args: string[]) {
     maxTurns,
     allowedTools,
     agentTimeout,
-    maxRetries,
+    maxCrashes,
   });
 
   process.on("SIGINT", async () => {

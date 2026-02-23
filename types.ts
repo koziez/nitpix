@@ -79,7 +79,7 @@ export interface WatcherOptions {
   maxTurns: number;
   allowedTools?: string;
   agentTimeout?: number;
-  maxRetries?: number;
+  maxCrashes?: number;
 }
 
 export interface ActivityEntry {

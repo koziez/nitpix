@@ -57,7 +57,7 @@ nitpix/
 - **Screenshot validation**: Base64 screenshot data is validated for PNG magic bytes before writing to disk.
 - **Screenshot cleanup**: Deleting a task also removes its screenshot files from disk.
 - **Agent timeout**: The watcher kills agent processes after a configurable timeout (default 10 min).
-- **Max retries**: The watcher skips tasks that have exceeded the configured retry limit (default 2).
+- **Crash loop protection**: The watcher tracks consecutive agent crashes (exits without updating status) per task. After 2 crashes (configurable via `--max-crashes`), it halts auto-dispatch for that task. The counter resets when a human retries the task from the side panel.
 - **Delete undo toast**: Side panel shows a 3-second undo toast before actually sending the DELETE request.
 
 ## Common Tasks
