@@ -11,6 +11,7 @@ const SERVER_URL = "http://localhost:4173";
 let tasks = [];
 let expandedTaskId = null;
 let retryTaskId = null; // task currently showing retry form
+let retryText = ""; // persists retry textarea content across re-renders
 let selectionModeActive = false;
 let activeSelectionMode = null; // "element" or "region"
 let taskActivityMap = {}; // taskId -> ActivityEntry[]
@@ -46,7 +47,7 @@ async function fetchTasks() {
           .then((data) => {
             if (data.entries && data.entries.length > 0) {
               taskActivityMap[task.id] = data.entries;
-              if (expandedTaskId === task.id) renderTasks();
+              if (expandedTaskId === task.id && !retryTaskId) renderTasks();
             }
           })
           .catch(() => {});
@@ -74,7 +75,7 @@ function connectSSE() {
   eventSource.addEventListener("task_created", (e) => {
     const task = JSON.parse(e.data);
     tasks.push(task);
-    renderTasks();
+    if (!retryTaskId) renderTasks();
   });
 
   eventSource.addEventListener("task_updated", (e) => {
@@ -84,20 +85,32 @@ function connectSSE() {
     if (updated.status !== "in_progress") {
       delete taskActivityMap[updated.id];
     }
+    if (retryTaskId) {
+      if (updated.id === retryTaskId && updated.status !== "review") {
+        retryTaskId = null;
+        retryText = "";
+        renderTasks();
+      }
+      return;
+    }
     renderTasks();
   });
 
   eventSource.addEventListener("task_deleted", (e) => {
     const { id } = JSON.parse(e.data);
     tasks = tasks.filter((t) => t.id !== id);
-    renderTasks();
+    if (retryTaskId === id) {
+      retryTaskId = null;
+      retryText = "";
+    }
+    if (!retryTaskId) renderTasks();
   });
 
   eventSource.addEventListener("task_activity", (e) => {
     const { taskId, entry } = JSON.parse(e.data);
     if (!taskActivityMap[taskId]) taskActivityMap[taskId] = [];
     taskActivityMap[taskId].push(entry);
-    if (expandedTaskId === taskId) renderTasks();
+    if (expandedTaskId === taskId && !retryTaskId) renderTasks();
   });
 
   eventSource.addEventListener("task_cancel", (e) => {
@@ -222,6 +235,7 @@ function createTaskCard(task) {
     if (e.target.closest(".task-actions") || e.target.closest(".retry-form") || e.target.closest(".task-card-delete")) return;
     expandedTaskId = expandedTaskId === task.id ? null : task.id;
     retryTaskId = null;
+    retryText = "";
     renderTasks();
   });
 
@@ -404,6 +418,10 @@ function createRetryForm(task) {
   const textarea = document.createElement("textarea");
   textarea.className = "retry-textarea";
   textarea.placeholder = "Describe what's wrong with the fix...";
+  textarea.value = retryText;
+  textarea.addEventListener("input", () => {
+    retryText = textarea.value;
+  });
   form.appendChild(textarea);
 
   const btnRow = document.createElement("div");
@@ -415,6 +433,7 @@ function createRetryForm(task) {
   cancelBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     retryTaskId = null;
+    retryText = "";
     renderTasks();
   });
 
@@ -564,6 +583,7 @@ async function retryTask(task, retryReason) {
     });
 
     retryTaskId = null;
+    retryText = "";
   } catch (err) {
     console.error("Failed to retry task:", err);
   }
