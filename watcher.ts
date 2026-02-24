@@ -240,6 +240,7 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
   const crashCounts = new Map<string, number>();
+  const knownAttempts = new Map<string, number>();
 
   // ── Logging helpers ──
 
@@ -345,6 +346,7 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
       const args = [
         "-p",
         prompt,
+        "--verbose",
         "--allowedTools",
         allowedTools,
         "--output-format",
@@ -508,8 +510,13 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
         task_updated: (data) => {
           const task = data as Task;
           if (task.status === "pending") {
-            // Human retry — reset crash counter
-            crashCounts.delete(task.id);
+            // Human retries add an attempt; watcher crash-resets don't.
+            // Only reset crash counter when attempts increased.
+            const known = knownAttempts.get(task.id) ?? 0;
+            if (task.attempts.length > known) {
+              crashCounts.delete(task.id);
+              knownAttempts.set(task.id, task.attempts.length);
+            }
             enqueue(task.id);
           }
         },
@@ -517,6 +524,7 @@ export function startWatcher(options: WatcherOptions): { stop: () => void } {
           const { id } = data as { id: string };
           pendingQueue = pendingQueue.filter((qid) => qid !== id);
           crashCounts.delete(id);
+          knownAttempts.delete(id);
         },
         task_cancel: (data) => {
           const { id } = data as { id: string };

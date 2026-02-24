@@ -407,15 +407,30 @@
       ]
     );
 
-    // Position popup below or above the element
+    // Position popup within the visible viewport
+    const popupWidth = 320;
+    const popupHeight = 220; // approximate height of the form
+    const margin = 8;
+
     const spaceBelow = window.innerHeight - rect.bottom;
-    if (spaceBelow > 250) {
-      popupContainer.style.top = rect.bottom + 8 + "px";
+    const spaceAbove = rect.top;
+
+    let top;
+    if (spaceBelow > popupHeight + margin) {
+      top = rect.bottom + margin;
+    } else if (spaceAbove > popupHeight + margin) {
+      top = rect.top - popupHeight - margin;
     } else {
-      popupContainer.style.bottom = window.innerHeight - rect.top + 8 + "px";
+      // Neither side has enough room — pin to bottom of viewport
+      top = window.innerHeight - popupHeight - margin;
     }
-    popupContainer.style.left =
-      Math.min(rect.left, window.innerWidth - 340) + "px";
+    // Clamp vertically
+    top = Math.max(margin, Math.min(top, window.innerHeight - popupHeight - margin));
+    popupContainer.style.top = top + "px";
+
+    // Clamp horizontally
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - popupWidth - margin));
+    popupContainer.style.left = left + "px";
 
     document.body.appendChild(popupContainer);
 
@@ -935,15 +950,28 @@
       ]
     );
 
-    // Position popup below the drawn region, or above if not enough space
-    const spaceBelow = window.innerHeight - (regionRect.y + regionRect.height);
-    if (spaceBelow > 250) {
-      popupContainer.style.top = (regionRect.y + regionRect.height + 8) + "px";
+    // Position popup within the visible viewport
+    const popupWidth = 320;
+    const popupHeight = 220; // approximate height of the form
+    const margin = 8;
+
+    const regionBottom = regionRect.y + regionRect.height;
+    const spaceBelow = window.innerHeight - regionBottom;
+    const spaceAbove = regionRect.y;
+
+    let top;
+    if (spaceBelow > popupHeight + margin) {
+      top = regionBottom + margin;
+    } else if (spaceAbove > popupHeight + margin) {
+      top = regionRect.y - popupHeight - margin;
     } else {
-      popupContainer.style.bottom = (window.innerHeight - regionRect.y + 8) + "px";
+      top = window.innerHeight - popupHeight - margin;
     }
-    popupContainer.style.left =
-      Math.min(regionRect.x, window.innerWidth - 340) + "px";
+    top = Math.max(margin, Math.min(top, window.innerHeight - popupHeight - margin));
+    popupContainer.style.top = top + "px";
+
+    const left = Math.max(margin, Math.min(regionRect.x, window.innerWidth - popupWidth - margin));
+    popupContainer.style.left = left + "px";
 
     document.body.appendChild(popupContainer);
     setTimeout(() => textarea.focus(), 50);
