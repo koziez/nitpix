@@ -143,7 +143,7 @@ The extension walks React's `__reactFiber$` → `_debugSource` to find source fi
 | `--max-turns <n>` | 25 | Max agent turns per task |
 | `--allowed-tools <tools>` | `Edit,Write,Read,Bash(curl:*),Glob,Grep` | Comma-separated tools the agent can use |
 | `--agent-timeout <ms>` | 600000 (10 min) | Timeout per agent |
-| `--max-retries <n>` | 2 | Max retries before the watcher skips a task |
+| `--max-crashes <n>` | 2 | Max consecutive agent crashes before halting a task |
 
 </details>
 
@@ -159,6 +159,9 @@ The extension walks React's `__reactFiber$` → `_debugSource` to find source fi
 | `PUT` | `/api/tasks/:id` | Update a task |
 | `DELETE` | `/api/tasks/:id` | Delete a task and its screenshots |
 | `POST` | `/api/tasks/:id/after-screenshot` | Upload after screenshot |
+| `POST` | `/api/tasks/:id/activity` | Post an activity entry |
+| `GET` | `/api/tasks/:id/activity` | Get activity entries for a task |
+| `POST` | `/api/tasks/:id/cancel` | Cancel a task (sets status to done) |
 | `GET` | `/api/status` | Queue summary counts |
 | `GET` | `/screenshots/:file` | Serve a screenshot |
 
@@ -195,7 +198,7 @@ Your app isn't running in React development mode, or the clicked element is outs
 <details>
 <summary><strong>Extension doesn't activate on the page</strong></summary>
 
-The content script injects on `http://localhost/*` and `https://localhost/*`. If your dev server uses a different host, update `host_permissions` and `content_scripts.matches` in `extension/manifest.json`.
+The content script injects on `http://localhost/*` and `https://localhost/*`. If your dev server uses a different host, update `content_scripts.matches` in `extension/manifest.json`.
 
 </details>
 

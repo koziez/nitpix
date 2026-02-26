@@ -25,6 +25,21 @@
   let regionStart = null;
   let isDrawing = false;
 
+  // ─── Service Worker Retry ─────────────────────────────────────────
+
+  async function sendMsg(msg) {
+    try {
+      return await chrome.runtime.sendMessage(msg);
+    } catch (err) {
+      if (err.message?.includes("Receiving end does not exist")) {
+        // Service worker was asleep — retry once to wake it
+        await new Promise((r) => setTimeout(r, 100));
+        return await chrome.runtime.sendMessage(msg);
+      }
+      throw err;
+    }
+  }
+
   // ─── React Fiber Inspection ───────────────────────────────────────
 
   function getFiber(element) {
@@ -477,7 +492,7 @@
 
     // Send to background script for screenshot + server POST
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await sendMsg({
         type: "CREATE_TASK",
         payload: {
           url: window.location.pathname + window.location.search,
@@ -525,7 +540,7 @@
     }
 
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await sendMsg({
         type: "CREATE_TASK",
         payload: {
           url: window.location.pathname + window.location.search,
@@ -599,7 +614,7 @@
     document.removeEventListener("keydown", onKeyDown, true);
     updateHighlight(null);
     hoveredElement = null;
-    try { chrome.runtime.sendMessage({ type: "SELECTION_MODE_CHANGED", active: false, mode: "element" }).catch(() => {}); } catch {}
+    try { sendMsg({ type: "SELECTION_MODE_CHANGED", active: false, mode: "element" }).catch(() => {}); } catch {}
   }
 
   function onMouseOver(e) {
@@ -666,7 +681,7 @@
     document.removeEventListener("mouseup", onRegionMouseUp, true);
     document.removeEventListener("keydown", onRegionKeyDown, true);
     removeRegionOverlay();
-    try { chrome.runtime.sendMessage({ type: "SELECTION_MODE_CHANGED", active: false, mode: "region" }).catch(() => {}); } catch {}
+    try { sendMsg({ type: "SELECTION_MODE_CHANGED", active: false, mode: "region" }).catch(() => {}); } catch {}
   }
 
   function removeRegionOverlay() {
@@ -1007,7 +1022,7 @@
     exitRegionMode();
 
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await sendMsg({
         type: "CREATE_TASK",
         payload: {
           url: window.location.pathname + window.location.search,
